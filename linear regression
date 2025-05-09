@@ -1,0 +1,56 @@
+import torch
+from torch import nn
+import matplotlib.pyplot as plt
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+X_train=torch.arange(1,10,1)
+Y_train=torch.arange(2,20,2)
+X_train=X_train.unsqueeze(dim=1)
+Y_train=Y_train.unsqueeze(dim=1)
+X_train,Y_train
+X_test=torch.arange(10,20,1)
+X_test=X_test.unsqueeze(dim=1)
+Y_test=torch.arange(20,40,2)
+Y_test=Y_test.unsqueeze(dim=1)
+class linearregression(nn.Module):
+  def __init__(self):
+    super().__init__()
+    self.weights=nn.Parameter(torch.randn(1,requires_grad=True,dtype=torch.float))
+    self.bias=nn.Parameter(torch.randn(1,requires_grad=True,dtype=torch.float))
+  def forward(self,x:torch.Tensor)->torch.Tensor:
+    return self.weights*x+self.bias
+model=linearregression()
+model.state_dict()
+loss_fn=nn.L1Loss()
+optimizer=torch.optim.SGD(params=model.parameters(),lr=0.01)
+epochs=100
+for epoch in range(epochs):
+  model.train()
+  Y_pred=model(X_train)
+  loss=loss_fn(Y_pred,Y_train)
+  print(f"loss={loss}")
+  optimizer.zero_grad()
+  loss.backward()
+  optimizer.step()
+  model.eval()
+  with torch.inference_mode():
+    test_pred=model(X_test)
+    test_loss=loss_fn(test_pred,Y_test)
+    print(f"test loss={test_loss}")
+model.state_dict()
+plt.figure(figsize=(8, 6))
+
+# Use .detach().cpu().numpy() for all tensors before plotting
+plt.scatter(X_train.detach().cpu().numpy(), Y_train.detach().cpu().numpy(), label="Train Data", color="blue")
+plt.scatter(X_test.detach().cpu().numpy(), Y_test.detach().cpu().numpy(), label="Test Data", color="green")
+
+plt.plot(X_train.detach().cpu().numpy(), Y_pred.detach().cpu().numpy(), label="Train Prediction", color="red")
+plt.plot(X_test.detach().cpu().numpy(), test_pred.detach().cpu().numpy(), label="Test Prediction", color="orange", linestyle="--")
+
+plt.xlabel("X")
+plt.ylabel("Y")
+plt.legend()
+plt.title("Linear Regression: Train & Test Predictions")
+plt.grid(True)
+plt.show()
