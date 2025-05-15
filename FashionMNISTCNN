@@ -1,0 +1,99 @@
+import torch
+from torch import nn
+import sklearn
+from sklearn.metrics import precision_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import recall_score
+import torchvision
+from torchvision import datasets
+from torchvision import transforms
+from torchvision.transforms import ToTensor
+import matplotlib.pyplot as plt
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+train_data=datasets.FashionMNIST(root="data",train=True,download=True,transform=torchvision.transforms.ToTensor(),target_transform=None)
+test_data=datasets.FashionMNIST(root="data",train=False,download=True,transform=torchvision.transforms.ToTensor(),target_transform=None)
+from torch.utils.data import DataLoader
+BATCH_SIZE=32
+train_dataloader=DataLoader(dataset=train_data,batch_size=BATCH_SIZE,shuffle=True)
+test_dataloader=DataLoader(dataset=test_data,batch_size=BATCH_SIZE,shuffle=False)
+class CNNmodel(nn.Module):
+  def __init__(self, input_shape,hidden_units,output_shape):
+    super().__init__()
+    self.conv_block_1=nn.Sequential(
+        nn.Conv2d(in_channels=input_shape,out_channels=hidden_units,kernel_size=3,stride=1,padding=1),
+        nn.ReLU(),
+        nn.Conv2d(in_channels=hidden_units,out_channels=hidden_units,kernel_size=3,stride=1,padding=1),
+        nn.ReLU(),
+        nn.MaxPool2d(kernel_size=2),
+    )
+    self.conv_block_2=nn.Sequential(
+        nn.Conv2d(in_channels=hidden_units,out_channels=hidden_units,kernel_size=3,stride=1,padding=1),
+        nn.ReLU(),
+        nn.Conv2d(in_channels=hidden_units,out_channels=hidden_units,kernel_size=3,stride=1,padding=1),
+        nn.ReLU(),
+        nn.MaxPool2d(kernel_size=2),
+    )
+    self.classifier=nn.Sequential(
+        nn.Flatten(),
+        nn.Linear(in_features=hidden_units*7*7,out_features=output_shape)
+    )
+  def forward(self,x):
+    x=self.conv_block_1(x)
+    x=self.conv_block_2(x) 
+    x=self.classifier(x)
+    return x  
+model=CNNmodel(input_shape=1,hidden_units=10,output_shape=10)
+loss_fn=nn.CrossEntropyLoss()
+optimizer=torch.optim.SGD(params=model.parameters(),lr=0.1)
+torch.manual_seed(42)
+epochs=3
+for epoch in range(epochs):
+  train_loss=0
+  train_preds = []
+  train_labels = [] 
+  for batch,(X,y) in enumerate(train_dataloader):
+    model.train()
+    y_pred=model(X)
+    loss=loss_fn(y_pred,y)
+    train_loss+=loss
+    pred_class = torch.argmax(y_pred, dim=1)
+    train_preds.append(pred_class)
+    train_labels.append(y)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    if batch%400==0:
+      print(f"Looked at{batch*len(X)}/{len(train_dataloader.dataset)}samples")
+  train_preds = torch.cat(train_preds)
+  train_labels = torch.cat(train_labels)
+  train_precision = precision_score(train_labels.cpu(), train_preds.cpu(), average='macro',zero_division=0)
+  train_recall = recall_score(train_labels.cpu(), train_preds.cpu(), average='macro',zero_division=0)
+  train_f1 = f1_score(train_labels.cpu(), train_preds.cpu(), average='macro',zero_division=0)
+  train_loss/=len(train_dataloader)  
+  test_loss=0
+  all_preds = []
+  all_labels = []
+  model.eval()
+  with torch.inference_mode():
+    for X_test,y_test in test_dataloader:
+      test_pred=model(X_test)
+      test_pred_class = torch.argmax(test_pred, dim=1)  # for multi-class
+      all_preds.append(test_pred_class)
+      all_labels.append(y_test)
+      test_loss+=loss_fn(test_pred,y_test)
+    test_loss/=len(test_dataloader)
+  all_preds = torch.cat(all_preds)
+  all_labels = torch.cat(all_labels)
+  precision = precision_score(all_labels.cpu(), all_preds.cpu(), average='macro',zero_division=0)
+  recall = recall_score(all_labels.cpu(), all_preds.cpu(), average='macro',zero_division=0)
+  f1 = f1_score(all_labels.cpu(), all_preds.cpu(), average='macro',zero_division=0)   
+  print(f"training loss:{train_loss} test loss:{test_loss} train precision = {train_precision:.4f} train recall={train_recall:.4f} train f1={train_f1:.4f} test precision={precision:.4f} test recall={recall:.4f} test f1={f1:.4f}")  
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+cm = confusion_matrix(train_labels, train_preds)
+
+disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+disp.plot()
+cm2=confusion_matrix(all_labels,all_preds)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm2)
+disp.plot()
